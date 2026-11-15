@@ -1,0 +1,200 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Экспорт диалога</title>
+    <script src="https://telegram.org/js/telegram-web-app.js"></script>
+    <style>
+        :root {
+            --bg-color: var(--tg-theme-bg-color, #ffffff);
+            --text-color: var(--tg-theme-text-color, #000000);
+            --hint-color: var(--tg-theme-hint-color, #999999);
+            --button-color: var(--tg-theme-button-color, #3390ec);
+            --button-text-color: var(--tg-theme-button-text-color, #ffffff);
+            --secondary-bg: var(--tg-theme-secondary-bg-color, #f0f0f0);
+        }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+            background-color: var(--bg-color);
+            color: var(--text-color);
+            margin: 0;
+            padding: 16px;
+            padding-bottom: 80px;
+        }
+        .message {
+            margin-bottom: 8px;
+            padding: 10px 14px;
+            border-radius: 12px;
+            max-width: 85%;
+            word-wrap: break-word;
+            line-height: 1.4;
+        }
+        .message.owner {
+            background-color: var(--button-color);
+            color: var(--button-text-color);
+            margin-left: auto;
+            border-bottom-right-radius: 4px;
+        }
+        .message.other {
+            background-color: var(--secondary-bg);
+            border-bottom-left-radius: 4px;
+        }
+        .message .meta {
+            font-size: 0.75em;
+            opacity: 0.7;
+            margin-bottom: 4px;
+        }
+        .message .media {
+            margin-top: 6px;
+            font-style: italic;
+            opacity: 0.8;
+        }
+        #simulator-input {
+            position: fixed;
+            bottom: 0;
+            left: 0;
+            right: 0;
+            padding: 12px;
+            background-color: var(--secondary-bg);
+            display: flex;
+            gap: 8px;
+            border-top: 1px solid rgba(0,0,0,0.1);
+        }
+        #simulator-input input {
+            flex: 1;
+            padding: 10px 14px;
+            border-radius: 20px;
+            border: 1px solid rgba(0,0,0,0.1);
+            font-size: 16px;
+            background: var(--bg-color);
+            color: var(--text-color);
+            outline: none;
+        }
+        #simulator-input button {
+            padding: 10px 20px;
+            border-radius: 20px;
+            border: none;
+            background-color: var(--button-color);
+            color: var(--button-text-color);
+            font-size: 16px;
+            cursor: pointer;
+        }
+        .system-message {
+            text-align: center;
+            color: var(--hint-color);
+            font-size: 0.85em;
+            margin: 16px 0;
+        }
+    </style>
+</head>
+<body>
+    <div id="chat-container"></div>
+    <div id="simulator-input">
+        <input type="text" id="sim-text" placeholder="Напишите сообщение симулятору..." />
+        <button onclick="sendToSimulator()">Отправить</button>
+    </div>
+
+    <script>
+        const tg = Telegram.WebApp;
+        tg.ready();
+        tg.expand();
+
+        // Получаем chat_id из параметров URL
+        const urlParams = new URLSearchParams(window.location.search);
+        const chatId = urlParams.get('chat_id');
+
+        if (!chatId) {
+            document.getElementById('chat-container').innerHTML = '<p class="system-message">Ошибка: не указан chat_id.</p>';
+        } else {
+            loadHistory();
+        }
+
+        async function loadHistory() {
+            try {
+                const res = await fetch(`/api/history?chat_id=${chatId}`);
+                const messages = await res.json();
+                renderMessages(messages);
+            } catch (e) {
+                document.getElementById('chat-container').innerHTML = '<p class="system-message">Не удалось загрузить историю.</p>';
+            }
+        }
+
+        function renderMessages(messages) {
+            const container = document.getElementById('chat-container');
+            container.innerHTML = '';
+
+            messages.forEach(m => {
+                const div = document.createElement('div');
+                const isOwner = m.from_user_id === Number(chatId) || m.from_user_id === null; // Упрощённое определение
+                // Более точное определение: если from_user_id нет или он не равен собеседнику, считаем владельцем
+                // Но для простоты будем считать, что сообщения с content_type 'text' от собеседника — это 'other'
+                
+                // Для демонстрации: если from_user_id === null, считаем владельцем
+                const isFromOwner = m.from_user_id === null; 
+                
+                div.className = `message ${isFromOwner ? 'owner' : 'other'}`;
+                
+                let meta = '';
+                if (m.date_ts) {
+                    const date = new Date(m.date_ts * 1000);
+                    meta = `<div class="meta">${date.toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' })}</div>`;
+                }
+
+                let content = '';
+                if (m.text) content = escapeHtml(m.text);
+                else if (m.caption) content = escapeHtml(m.caption);
+                else content = `<div class="media">[${m.content_type}]</div>`;
+
+                div.innerHTML = meta + content;
+                container.appendChild(div);
+            });
+
+            window.scrollTo(0, document.body.scrollHeight);
+        }
+
+        function escapeHtml(text) {
+            const div = document.createElement('div');
+            div.textContent = text;
+            return div.innerHTML;
+        }
+
+        function sendToSimulator() {
+            const input = document.getElementById('sim-text');
+            const text = input.value.trim();
+            if (!text) return;
+
+            // Добавляем сообщение в интерфейс
+            const container = document.getElementById('chat-container');
+            const div = document.createElement('div');
+            div.className = 'message owner';
+            div.textContent = text;
+            container.appendChild(div);
+            input.value = '';
+            window.scrollTo(0, document.body.scrollHeight);
+
+            // Имитация ответа "собеседника"
+            setTimeout(() => {
+                const replyDiv = document.createElement('div');
+                replyDiv.className = 'message other';
+                replyDiv.textContent = generateSimulatedReply(text);
+                container.appendChild(replyDiv);
+                window.scrollTo(0, document.body.scrollHeight);
+            }, 800);
+        }
+
+        function generateSimulatedReply(userText) {
+            // Простая логика: если в тексте есть "привет", отвечаем приветствием
+            const lower = userText.toLowerCase();
+            if (lower.includes('привет') || lower.includes('здравствуй')) {
+                return 'Привет! Рад тебя видеть.';
+            }
+            if (lower.includes('как дела')) {
+                return 'Всё отлично, а у тебя?';
+            }
+            // Иначе — эхо-ответ с небольшим изменением
+            return `Ты сказал: "${userText}". Интересно!`;
+        }
+    </script>
+</body>
+</html>
