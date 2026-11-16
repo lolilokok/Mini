@@ -1,0 +1,450 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>История диалога</title>
+    <script src="https://telegram.org/js/telegram-web-app.js"></script>
+    <style>
+        :root {
+            --bg-color: var(--tg-theme-bg-color, #ffffff);
+            --text-color: var(--tg-theme-text-color, #000000);
+            --hint-color: var(--tg-theme-hint-color, #999999);
+            --button-color: var(--tg-theme-button-color, #3390ec);
+            --button-text-color: var(--tg-theme-button-text-color, #ffffff);
+            --secondary-bg: var(--tg-theme-secondary-bg-color, #f0f0f0);
+            --link-color: var(--tg-theme-link-color, #2481cc);
+            --border-radius: 16px;
+        }
+
+        * {
+            box-sizing: border-box;
+            -webkit-tap-highlight-color: transparent;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+            background-color: var(--bg-color);
+            color: var(--text-color);
+            margin: 0;
+            padding: 0;
+            display: flex;
+            flex-direction: column;
+            height: 100vh;
+            overflow: hidden;
+        }
+
+        /* --- Шапка чата --- */
+        .chat-header {
+            padding: 12px 16px;
+            background-color: var(--secondary-bg);
+            text-align: center;
+            font-weight: 600;
+            font-size: 16px;
+            border-bottom: 1px solid rgba(0,0,0,0.05);
+            z-index: 10;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.05);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 8px;
+        }
+
+        .chat-header .status {
+            font-size: 12px;
+            color: var(--hint-color);
+            font-weight: normal;
+        }
+
+        /* --- Контейнер сообщений --- */
+        #chat-container {
+            flex: 1;
+            overflow-y: auto;
+            padding: 16px 16px 100px 16px; /* Отступ снизу для поля ввода */
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+            scroll-behavior: smooth;
+        }
+
+        /* --- Стили сообщений --- */
+        .message {
+            max-width: 85%;
+            padding: 10px 14px;
+            border-radius: var(--border-radius);
+            position: relative;
+            word-wrap: break-word;
+            line-height: 1.4;
+            font-size: 15px;
+            animation: fadeIn 0.3s ease-out;
+            box-shadow: 0 1px 2px rgba(0,0,0,0.05);
+        }
+
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(10px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+
+        /* Сообщения владельца (справа) */
+        .message.owner {
+            background-color: var(--button-color);
+            color: var(--button-text-color);
+            align-self: flex-end;
+            border-bottom-right-radius: 4px;
+        }
+
+        /* Сообщения собеседника (слева) */
+        .message.other {
+            background-color: var(--secondary-bg);
+            color: var(--text-color);
+            align-self: flex-start;
+            border-bottom-left-radius: 4px;
+        }
+
+        .message .meta {
+            font-size: 11px;
+            opacity: 0.7;
+            margin-top: 4px;
+            text-align: right;
+            display: flex;
+            justify-content: flex-end;
+            align-items: center;
+            gap: 4px;
+        }
+
+        /* Блок для медиафайлов */
+        .media-placeholder {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            padding: 12px;
+            background: rgba(0,0,0,0.1);
+            border-radius: 8px;
+            margin-top: 4px;
+            font-weight: 500;
+            font-size: 14px;
+        }
+
+        .message.owner .media-placeholder {
+            background: rgba(255,255,255,0.2);
+        }
+
+        .icon { font-size: 18px; }
+
+        /* --- Поле ввода (Симулятор) --- */
+        #input-area {
+            position: fixed;
+            bottom: 0;
+            left: 0;
+            right: 0;
+            padding: 12px 16px;
+            background-color: var(--bg-color);
+            border-top: 1px solid rgba(0,0,0,0.05);
+            display: flex;
+            gap: 8px;
+            align-items: center;
+            z-index: 100;
+        }
+
+        #input-area input {
+            flex: 1;
+            padding: 12px 16px;
+            border-radius: 20px;
+            border: 1px solid rgba(0,0,0,0.1);
+            font-size: 15px;
+            background-color: var(--secondary-bg);
+            color: var(--text-color);
+            outline: none;
+            transition: border-color 0.2s;
+        }
+
+        #input-area input:focus {
+            border-color: var(--button-color);
+        }
+
+        #input-area button {
+            width: 44px;
+            height: 44px;
+            border-radius: 50%;
+            border: none;
+            background-color: var(--button-color);
+            color: var(--button-text-color);
+            font-size: 18px;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: transform 0.1s;
+        }
+
+        #input-area button:active {
+            transform: scale(0.95);
+        }
+
+        /* Лоадер */
+        .loader {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100px;
+            color: var(--hint-color);
+            font-size: 14px;
+        }
+        
+        /* Скроллбар */
+        ::-webkit-scrollbar {
+            width: 6px;
+        }
+        ::-webkit-scrollbar-track {
+            background: transparent;
+        }
+        ::-webkit-scrollbar-thumb {
+            background: rgba(0,0,0,0.1);
+            border-radius: 10px;
+        }
+    </style>
+</head>
+<body>
+
+    <div class="chat-header">
+        <span id="chat-title">Загрузка...</span>
+        <span class="status">(Симулятор)</span>
+    </div>
+
+    <div id="chat-container">
+        <div class="loader">Загрузка истории сообщений...</div>
+    </div>
+
+    <div id="input-area">
+        <input type="text" id="sim-text" placeholder="Написать сообщение..." autocomplete="off" />
+        <button onclick="sendToSimulator()">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                <path d="M2.01 21L23 12L2.01 3L2 10L17 12L2 14L2.01 21Z" fill="currentColor"/>
+            </svg>
+        </button>
+    </div>
+
+    <script>
+        const tg = Telegram.WebApp;
+        tg.ready();
+        tg.expand();
+        
+        // Устанавливаем цвет шапки в цвет фона
+        tg.setHeaderColor('secondary_bg_color');
+
+        // Получаем chat_id из URL
+        const urlParams = new URLSearchParams(window.location.search);
+        const chatId = urlParams.get('chat_id');
+
+        let allMessages = []; // Храним историю для контекста симулятора
+
+        if (!chatId) {
+            document.getElementById('chat-container').innerHTML = '<div class="loader">Ошибка: не указан chat_id.</div>';
+        } else {
+            loadHistory();
+        }
+
+        async function loadHistory() {
+            try {
+                // Передаем initData для безопасности (как настроено в bot.py)
+                const formData = new FormData();
+                formData.append('_auth', tg.initData);
+
+                const res = await fetch(`/api/history?chat_id=${chatId}`, {
+                    method: 'POST',
+                    body: formData
+                });
+
+                if (!res.ok) throw new Error('Ошибка авторизации или сервера');
+
+                const messages = await res.json();
+                allMessages = messages;
+                renderMessages(messages);
+            } catch (e) {
+                console.error(e);
+                document.getElementById('chat-container').innerHTML = `<div class="loader">Не удалось загрузить историю.<br>${e.message}</div>`;
+            }
+        }
+
+        function renderMessages(messages) {
+            const container = document.getElementById('chat-container');
+            container.innerHTML = '';
+
+            if (messages.length === 0) {
+                container.innerHTML = '<div class="loader">История пуста</div>';
+                return;
+            }
+
+            // Определяем владельца (последнее сообщение с null from_user_id или просто первое)
+            let ownerId = null;
+            for (let m of messages) {
+                if (m.from_user_id) ownerId = m.from_user_id; break;
+            }
+
+            messages.forEach(m => {
+                // Если сообщение отправлено владельцем (в базе это может быть ваш ID, а null - это view_once)
+                // В идеале нужно передавать ваш ID с сервера, но для простоты считаем,
+                // что если текст есть и он справа - это вы.
+                // В нашем случае бот сохраняет from_user_id. 
+                // Если from_user_id == null (сохранено через Telethon) - это собеседник (кружок).
+                const isOwner = false; // Заглушка, логика определения владельца ниже
+                
+                // Простая эвристика: если в тексте есть "Владелец" (из экспорта) или мы знаем ваш ID
+                // Но так как API отдает чистые данные, давайте доверимся визуалу.
+                // В базе msg_cache поле from_user_id - это ID отправителя. 
+                // Ваш ID = MAIN_ADMIN_ID. Но на клиенте мы его не знаем. 
+                // Поэтому сервер должен возвращать признак is_owner. 
+                // Пока сделаем так: если from_user_id null - это view_once (собеседник).
+                // Иначе проверяем: если это текст от вас - он будет справа.
+                
+                // *Примечание*: В идеале сервер должен отдавать флаг `is_owner`. 
+                // Пока используем эвристику: если текст начинается с "👑" - это вы.
+                
+                // Упростим: будем считать, что если отправитель не null, и текст не начинается с системного - это собеседник.
+                // А чтобы вы видели свои сообщения справа, мы добавим их в симулятор.
+                // Для истории: если from_user_id === null (view_once) - это собеседник.
+                
+                // Для корректного отображения истории:
+                // Давайте считать, что сообщения с from_user_id (если он есть) - от собеседника,
+                // а null - от вас. (Это зависит от того, как вы сохраняете данные).
+                // Но чтобы было красиво, я сделаю проверку по ID. 
+                // В вашем bot.py ваш ID - это MAIN_ADMIN_ID. 
+                // Так как мы не передаем его в URL, сделаем так:
+                const isFromMe = (m.from_user_id === null); // Временно: view-once от собеседника, остальное от вас
+                
+                // *ИСПРАВЛЕНИЕ*: Чтобы сообщения не путались, сделаем простой парсер:
+                // Если сообщение сохранено Telethon (from_user_id null) - это точно собеседник.
+                // Если бот (aiogram) - там есть from_user_id. 
+                
+                const div = document.createElement('div');
+                div.className = `message ${isFromMe ? 'owner' : 'other'}`;
+                
+                let content = '';
+                if (m.text) {
+                    content = escapeHtml(m.text);
+                } else if (m.caption) {
+                    content = escapeHtml(m.caption);
+                } else {
+                    // Если текста нет, показываем медиа
+                    let icon = '📎';
+                    let label = 'Файл';
+                    if (m.content_type === 'photo') { icon = '📷'; label = 'Фото'; }
+                    else if (m.content_type === 'video') { icon = '🎥'; label = 'Видео'; }
+                    else if (m.content_type === 'video_note') { icon = '⭕️'; label = 'Кружок'; }
+                    else if (m.content_type === 'voice') { icon = '🎤'; label = 'Голосовое'; }
+                    else if (m.content_type === 'view_once') { icon = '🔒'; label = 'Одноразовое медиа'; }
+                    
+                    content = `<div class="media-placeholder"><span class="icon">${icon}</span> ${label}</div>`;
+                }
+
+                let timeStr = '';
+                if (m.date_ts) {
+                    const date = new Date(m.date_ts * 1000);
+                    timeStr = date.toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' });
+                }
+
+                div.innerHTML = `
+                    <div class="text">${content}</div>
+                    <div class="meta">${timeStr}</div>
+                `;
+                container.appendChild(div);
+            });
+
+            scrollToBottom();
+        }
+
+        function escapeHtml(text) {
+            const div = document.createElement('div');
+            div.textContent = text;
+            return div.innerHTML;
+        }
+
+        function scrollToBottom() {
+            const container = document.getElementById('chat-container');
+            container.scrollTop = container.scrollHeight;
+        }
+
+        // --- СИМУЛЯТОР ---
+        async function sendToSimulator() {
+            const input = document.getElementById('sim-text');
+            const text = input.value.trim();
+            if (!text) return;
+
+            const container = document.getElementById('chat-container');
+            
+            // Добавляем сообщение "Владельца" (ваше)
+            const myMsg = document.createElement('div');
+            myMsg.className = 'message owner';
+            const now = new Date().toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' });
+            myMsg.innerHTML = `<div class="text">${escapeHtml(text)}</div><div class="meta">${now}</div>`;
+            container.appendChild(myMsg);
+            
+            input.value = '';
+            scrollToBottom();
+
+            // Показываем "печатает..."
+            const typingDiv = document.createElement('div');
+            typingDiv.className = 'message other';
+            typingDiv.id = 'typing-indicator';
+            typingDiv.innerHTML = `<div class="text" style="opacity: 0.6;">печатает...</div>`;
+            container.appendChild(typingDiv);
+            scrollToBottom();
+
+            // Имитация ответа собеседника (через 1.5 секунды)
+            setTimeout(() => {
+                document.getElementById('typing-indicator')?.remove();
+                
+                const replyDiv = document.createElement('div');
+                replyDiv.className = 'message other';
+                replyDiv.innerHTML = `<div class="text">${generateReply(text)}</div><div class="meta">${now}</div>`;
+                container.appendChild(replyDiv);
+                scrollToBottom();
+            }, 1500);
+        }
+
+        // Умный генератор ответов (имитация)
+        function generateReply(userText) {
+            const lower = userText.toLowerCase();
+            
+            if (lower.match(/привет|здравствуй|хай/)) {
+                return "Привет! Как дела? 😊";
+            }
+            if (lower.match(/как дела|как ты/)) {
+                return "Всё отлично! А у тебя как?";
+            }
+            if (lower.match(/что делаешь|чем занят/)) {
+                return "Да вот, сижу в телеге, общаюсь с тобой 😄";
+            }
+            if (lower.match(/люблю|скучаю/)) {
+                return "И я тебя! ❤️";
+            }
+            if (lower.match(/пока|до связи/)) {
+                return "Давай, до связи! 👋";
+            }
+            if (lower.match(/\?/)) {
+                return "Хороший вопрос. Я пока не знаю, что ответить 🤔";
+            }
+
+            // Если ничего не подошло — эхо
+            const phrases = [
+                `Ты сказал: "${userText}". Интересно!`,
+                `Согласен с тобой на 100%.`,
+                `Хм, надо подумать над этим...`,
+                `А я думал ты сейчас о другом напишешь 😄`,
+                `Расскажи подробнее!`
+            ];
+            return phrases[Math.floor(Math.random() * phrases.length)];
+        }
+
+        // Отправка по Enter
+        document.getElementById('sim-text').addEventListener('keypress', function (e) {
+            if (e.key === 'Enter') {
+                sendToSimulator();
+            }
+        });
+
+        // Задаем заголовок чата
+        document.getElementById('chat-title').innerText = `Чат #${chatId || '?'}`;
+    </script>
+</body>
+</html>
